@@ -18,7 +18,8 @@ fines exclusivamente académicos; no representan infraestructura real.
 
 ## Topología
 
-![Topología de la organización — CPD, sedes y servicios cloud](../docs/img/topologia-escenario.png)
+![Topología de la organización — CPD, sedes y servicios cloud](../docs/img/Topología_Lógica_Organización.png)
+
 
 *Topología lógica del escenario: centro de datos (CPD), sede principal (HQ),
 almacén y servicios cloud. Se indican los flujos de negocio, los túneles SD-WAN,
