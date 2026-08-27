@@ -61,6 +61,9 @@ El contexto de cada activo se parametriza según el origen de cada valor:
 - **Derivado**: obtenido a partir de otros campos o de tablas de referencia.
 - **Calculado**: computado por el pipeline (normalizaciones, blast radius).
 
+
+Para el detalle del pipeline que consume este inventario, véase [`docs/arquitectura.md`](../docs/arquitectura.md).
+
 Los campos de override permanecen a `null` / `false` mientras no se declare una
 criticidad explícita mediante el flujo `workflow-override`, que activa el factor H
 del modelo de scoring.
