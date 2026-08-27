@@ -1,0 +1,71 @@
+services:
+  elasticsearch:
+    image: docker.elastic.co/elasticsearch/elasticsearch:8.15.3
+    container_name: elasticsearch
+    environment:
+      - discovery.type=single-node
+      - xpack.security.enabled=false
+      - ES_JAVA_OPTS=-Xms2g -Xmx2g
+    ports:
+      - "127.0.0.1:9200:9200"
+    volumes:
+      - es_data:/usr/share/elasticsearch/data
+    networks:
+      - tfm_net
+  kibana:
+    image: docker.elastic.co/kibana/kibana:8.15.3
+    container_name: kibana
+    environment:
+      - ELASTICSEARCH_HOSTS=http://elasticsearch:9200
+    expose:
+      - "5601"
+    depends_on:
+      - elasticsearch
+    networks:
+      - tfm_net
+  n8n:
+    image: n8nio/n8n:latest
+    container_name: n8n
+    environment:
+      - GENERIC_TIMEZONE=Europe/Madrid
+      - N8N_HOST=n8n.local
+      - N8N_PORT=5678
+      - N8N_PROTOCOL=https
+      - N8N_EDITOR_BASE_URL=https://n8n.local/
+      - WEBHOOK_URL=https://n8n.local/
+      - N8N_PROXY_HOPS=1
+      - NODE_ENV=production
+      - NODE_FUNCTION_ALLOW_BUILTIN=zlib
+    volumes:
+      - n8n_data:/home/node/.n8n
+      - ./datasets:/files/datasets
+      - ./python-agent:/files/python-agent
+    expose:
+      - "5678"
+    depends_on:
+      - elasticsearch
+    networks:
+      - tfm_net
+  caddy:
+    image: caddy:2
+    container_name: caddy
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - n8n
+      - kibana
+    networks:
+      - tfm_net
+volumes:
+  es_data:
+  n8n_data:
+  caddy_data:
+  caddy_config:
+networks:
+  tfm_net:
+    driver: bridge
