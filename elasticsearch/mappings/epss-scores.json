@@ -1,0 +1,10 @@
+{
+  "mappings": {
+    "properties": {
+      "cve_id": { "type": "keyword" },
+      "epss_percentile": { "type": "float" },
+      "epss_score": { "type": "float" },
+      "score_date": { "type": "date" }
+    }
+  }
+}
