@@ -1,0 +1,40 @@
+# === Secretos y entorno ===
+.env
+*.env
+!.env.example
+*.key
+*.crt
+*.pem
+caddy-root.crt
+
+# === Volúmenes y datos pesados de Docker ===
+n8n-data/
+n8n_data/
+es_data/
+esdata/
+caddy_data/
+caddy_config/
+volumes/
+backups/
+
+# === Datasets pesados / descargas ===
+datasets/
+*.csv.gz
+epss_scores*.csv
+dc01_nvd_page*.json
+
+# === Python ===
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+env/
+
+# === Sistema operativo / editores ===
+.DS_Store
+Thumbs.db
+*.swp
+*~
+.idea/
+.vscode/
