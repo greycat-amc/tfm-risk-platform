@@ -1,0 +1,30 @@
+- tactic: discovery
+  technique_name: Exploit Public-Facing Application
+  technique_id: T1190
+  name: Check Apache service WEB-01
+  description: Verifica que el servicio Apache de WEB-01 responde antes de explotar
+  executors:
+  - name: sh
+    platform: linux
+    command: curl -s -o /dev/null -w "%{http_code}" http://192.168.56.105/cgi-bin/test.sh
+    code: null
+    language: null
+    build_target: null
+    payloads: []
+    uploads: []
+    timeout: 60
+    parsers: []
+    cleanup: []
+    variations: []
+    additional_info: {}
+  requirements: []
+  privilege: ''
+  repeatable: false
+  buckets:
+  - discovery
+  additional_info: {}
+  access: {}
+  singleton: false
+  plugin: ''
+  delete_payload: true
+  id: 89f75433-b321-4bb4-8186-600fd0d8f8ba

