@@ -28,7 +28,7 @@ La ability de path traversal explota la vulnerabilidad para leer un fichero fuer
 La ability de ejecución remota inyecta el comando id a través de mod_cgi. La salida devuelta muestra la cadena uid=..., que confirma la ejecución de código en el sistema objetivo:
 
 <p align="center">
-  <img src="before/output-ability3-rce.png" alt="RCE: salida del comando id" width="400">
+  <img src="before/output-ability3-rce.png" alt="RCE: salida del comando id" width="100">
 </p>
 
 
