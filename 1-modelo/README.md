@@ -157,7 +157,7 @@ doble que el alcance a un salto. En la versión actual, la matriz de alcance se
 declara manualmente (`blast_radius_status: manual_estimated`); 
 
 <p align="center">
-  <img src="img/matriz-blast-radius.png" alt="Matriz de alcance para el cálculo del blast radius" width="700"><br>
+  <img src="img/matriz-blast-radius.png.png" alt="Matriz de alcance para el cálculo del blast radius" width="700"><br>
   <em>Matriz de alcance declarada: para cada módulo, se indican los módulos de alcance directo (peso 1.0) y de alcance a un salto (peso 0.5) sobre los que puede propagarse un compromiso.</em>
 </p>
 
