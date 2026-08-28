@@ -19,15 +19,17 @@ Con la versión vulnerable, la cadena de ataque se completa con éxito.
   <img src="before/operation_exploit_success.png" alt="Operación con las tres abilities en SUCCESS" width="900">
 </p>
 
-![Operación con las tres abilities en SUCCESS](before/operation_exploit_success.png)
-
 La ability de path traversal explota la vulnerabilidad para leer un fichero fuera del directorio web. La salida devuelta muestra el contenido de /etc/passwd, con la línea root: que confirma la lectura no autorizada:
 
-![Path traversal: contenido de /etc/passwd](before/output-ability2-traversal.png)
+<p align="center">
+  <img src="before/output-ability2-traversal.png" alt="Path traversal: contenido de /etc/passwd" width="700">
+</p>
 
 La ability de ejecución remota inyecta el comando id a través de mod_cgi. La salida devuelta muestra la cadena uid=..., que confirma la ejecución de código en el sistema objetivo:
 
-![RCE: salida del comando id](before/output-ability3-rce.png)
+<p align="center">
+  <img src="before/output-ability3-rce.png" alt="RCE: salida del comando id" width="700">
+</p>
 
 
 
