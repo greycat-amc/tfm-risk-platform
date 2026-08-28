@@ -16,9 +16,9 @@ Con la versión vulnerable, la cadena de ataque se completa con éxito.
 
 ![Operación con las tres abilities en SUCCESS](before/operation_exploit_success.png)
 
-![Path traversal: contenido de /etc/passwd](before/operation_exploit_success.png)
+![Path traversal: contenido de /etc/passwd](before/output-ability2-traversal.png)
 
-![RCE: salida del comando id](before/operation_exploit_success.png)
+![RCE: salida del comando id](before/output-ability2-traversal.png)
 
 
 
