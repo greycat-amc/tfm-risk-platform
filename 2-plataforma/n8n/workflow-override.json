@@ -1,0 +1,242 @@
+{
+  "name": "02 - Override Criticality",
+  "nodes": [
+    {
+      "parameters": {
+        "formTitle": "Override",
+        "formFields": {
+          "values": [
+            {
+              "fieldLabel": "asset_id",
+              "fieldType": "dropdown",
+              "fieldOptions": {
+                "values": [
+                  {
+                    "option": "WEB-01"
+                  },
+                  {
+                    "option": "DC-01"
+                  },
+                  {
+                    "option": "MAIL-01"
+                  },
+                  {
+                    "option": "JMP-01"
+                  },
+                  {
+                    "option": "APP-01"
+                  },
+                  {
+                    "option": "PROXY-01"
+                  },
+                  {
+                    "option": "DEV-01"
+                  },
+                  {
+                    "option": "WKS-01"
+                  },
+                  {
+                    "option": "WKS-02"
+                  },
+                  {
+                    "option": "PAY-01"
+                  },
+                  {
+                    "option": "DB-02"
+                  },
+                  {
+                    "option": "M365-01"
+                  },
+                  {
+                    "option": "FW-01"
+                  },
+                  {
+                    "option": "FW-02"
+                  },
+                  {
+                    "option": "FW-03"
+                  },
+                  {
+                    "option": "CAM-01"
+                  },
+                  {
+                    "option": "DB-03"
+                  },
+                  {
+                    "option": "SDN-01"
+                  },
+                  {
+                    "option": "SW-01"
+                  },
+                  {
+                    "option": "PLC-01"
+                  },
+                  {
+                    "option": "DB-01"
+                  }
+                ]
+              }
+            },
+            {
+              "fieldLabel": "criticality_override_level",
+              "fieldType": "dropdown",
+              "fieldOptions": {
+                "values": [
+                  {
+                    "option": "low"
+                  },
+                  {
+                    "option": "medium"
+                  },
+                  {
+                    "option": "high"
+                  },
+                  {
+                    "option": "critical"
+                  }
+                ]
+              }
+            },
+            {
+              "fieldLabel": "justification"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.formTrigger",
+      "typeVersion": 2.5,
+      "position": [
+        -832,
+        -240
+      ],
+      "id": "6d5b5336-a23e-444b-92e6-2de7d078ce83",
+      "name": "On form submission",
+      "webhookId": "95680578-6780-4083-8683-1bde341eee86"
+    },
+    {
+      "parameters": {
+        "jsCode": "const criticalityMap = { low: 2, medium: 3, high: 4, critical: 5 };\n\nconst level = $json.criticality_override_level;\nconst score = criticalityMap[level];\n\nif (!score) throw new Error(`Nivel no reconocido: ${level}`);\n\nreturn [{\n  json: {\n    asset_id: $json.asset_id,\n    criticality_override_level: level,\n    criticality_score: score,\n    criticality_norm: score / 5,\n    criticality_overridden: true,\n    override_justification: $json.justification,\n    override_timestamp: new Date().toISOString()\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -624,
+        -240
+      ],
+      "id": "36b1e697-8c71-4cc4-b958-d4d3042cd0c8",
+      "name": "01-Normalize Override"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=http://elasticsearch:9200/asset-inventory-v1/_update/{{ $json.asset_id }}?refresh=wait_for",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ doc: $json }) }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        -416,
+        -240
+      ],
+      "id": "f422c678-218f-4f2a-a269-d1c9be1901fc",
+      "name": "02-Write Override to Inventory"
+    },
+    {
+      "parameters": {
+        "workflowId": {
+          "__rl": true,
+          "value": "7GCmLaTYn7ZpseFt",
+          "mode": "id",
+          "cachedResultUrl": "/workflow/7GCmLaTYn7ZpseFt"
+        },
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "value": {},
+          "matchingColumns": [],
+          "schema": [],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": true
+        },
+        "mode": "each",
+        "options": {
+          "waitForSubWorkflow": true
+        }
+      },
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.3,
+      "position": [
+        -160,
+        -240
+      ],
+      "id": "0b670282-5ba7-4f75-be3d-e5fa286abcba",
+      "name": "03-Trigger Recalculation"
+    },
+    {
+      "parameters": {
+        "content": "# Override\n",
+        "height": 336,
+        "width": 960,
+        "color": 3
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -896,
+        -352
+      ],
+      "id": "07e56662-e870-4518-85d8-fac91cacc16f",
+      "name": "Sticky Note"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "On form submission": {
+      "main": [
+        [
+          {
+            "node": "01-Normalize Override",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "01-Normalize Override": {
+      "main": [
+        [
+          {
+            "node": "02-Write Override to Inventory",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "02-Write Override to Inventory": {
+      "main": [
+        [
+          {
+            "node": "03-Trigger Recalculation",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  },
+  "versionId": "356d2b81-14db-46ab-a68d-759e62e8773a",
+  "meta": {
+    "instanceId": "55af0cced9718bf167a4a78ee093b1c0ab097bc889ab4c1637f24017903284cb"
+  },
+  "id": "njzbRWTQaxm2Dndt",
+  "tags": []
+}

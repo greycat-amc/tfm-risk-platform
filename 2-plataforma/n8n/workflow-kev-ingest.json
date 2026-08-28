@@ -1,0 +1,108 @@
+{
+  "name": "00-Update KEV Catalog",
+  "nodes": [
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        -784,
+        -144
+      ],
+      "id": "2f22de5e-dd1b-4956-b00e-4f9c9fc20c64",
+      "name": "When clicking ‘Execute workflow’"
+    },
+    {
+      "parameters": {
+        "url": "https://raw.githubusercontent.com/cisagov/kev-data/develop/known_exploited_vulnerabilities.json",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        -576,
+        -144
+      ],
+      "id": "81d5fb0f-74cf-4bba-9ba6-e49f28e86f7b",
+      "name": "01 - Download KEV from GitHub"
+    },
+    {
+      "parameters": {
+        "jsCode": "/*\n  03 - Normalize KEV Catalog\n\n  Objetivo:\n  - Recibir el JSON de CISA KEV aunque venga como string en item.json.data.\n  - Parsearlo si hace falta.\n  - Extraer vulnerabilities[].\n  - Convertir cada vulnerabilidad KEV en un documento plano.\n  - Normalizar cveID → cve_id.\n*/\n\nconst input = items[0]?.json || {};\n\nlet kevRoot = null;\n\n// Caso 1: el catálogo ya viene como JSON directo\nif (input.vulnerabilities) {\n  kevRoot = input;\n}\n\n// Caso 2: el catálogo viene dentro de input.data como string JSON\nelse if (typeof input.data === \"string\") {\n  try {\n    kevRoot = JSON.parse(input.data);\n  } catch (error) {\n    return [\n      {\n        json: {\n          error: true,\n          message: \"No se pudo parsear input.data como JSON.\",\n          details: error.message,\n          received_keys: Object.keys(input),\n          sample: input.data.slice(0, 500)\n        }\n      }\n    ];\n  }\n}\n\n// Caso 3: el catálogo viene dentro de input.body como string JSON\nelse if (typeof input.body === \"string\") {\n  try {\n    kevRoot = JSON.parse(input.body);\n  } catch (error) {\n    return [\n      {\n        json: {\n          error: true,\n          message: \"No se pudo parsear input.body como JSON.\",\n          details: error.message,\n          received_keys: Object.keys(input),\n          sample: input.body.slice(0, 500)\n        }\n      }\n    ];\n  }\n}\n\n// Caso 4: viene dentro de input.data como objeto\nelse if (input.data?.vulnerabilities) {\n  kevRoot = input.data;\n}\n\n// Caso 5: viene dentro de input.body como objeto\nelse if (input.body?.vulnerabilities) {\n  kevRoot = input.body;\n}\n\nif (!kevRoot || !Array.isArray(kevRoot.vulnerabilities)) {\n  return [\n    {\n      json: {\n        error: true,\n        message: \"No se encontró el array vulnerabilities en la respuesta de KEV.\",\n        received_keys: Object.keys(input),\n        received_sample: input\n      }\n    }\n  ];\n}\n\nconst vulnerabilities = kevRoot.vulnerabilities;\n\nreturn vulnerabilities\n  .filter(vuln => vuln.cveID)\n  .map(vuln => {\n    const cveId = String(vuln.cveID || \"\").trim().toUpperCase();\n\n    return {\n      json: {\n        cve_id: cveId,\n        kev_flag: true,\n        kev_score: 1,\n\n        vendor_project: vuln.vendorProject || null,\n        product: vuln.product || null,\n        vulnerability_name: vuln.vulnerabilityName || null,\n        short_description: vuln.shortDescription || null,\n        date_added: vuln.dateAdded || null,\n        due_date: vuln.dueDate || null,\n        known_ransomware: vuln.knownRansomwareCampaignUse || null,\n        required_action: vuln.requiredAction || null,\n        notes: vuln.notes || null,\n        cwes: vuln.cwes || [],\n\n        catalog_title: kevRoot.title || \"CISA Known Exploited Vulnerabilities Catalog\",\n        catalog_version: kevRoot.catalogVersion || null,\n        catalog_date_released: kevRoot.dateReleased || null,\n        catalog_count: kevRoot.count || vulnerabilities.length,\n\n        source: \"CISA KEV GitHub\",\n        source_url: \"https://raw.githubusercontent.com/cisagov/kev-data/develop/known_exploited_vulnerabilities.json\",\n\n        pipeline_stage: \"kev_catalog_normalized\",\n        updated_at: new Date().toISOString()\n      }\n    };\n  });"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -352,
+        -144
+      ],
+      "id": "5ccd5781-84a7-42f0-87bd-dd487eba81ed",
+      "name": "02 - Normalize KEV Catalog"
+    },
+    {
+      "parameters": {
+        "method": "PUT",
+        "url": "=http://elasticsearch:9200/kev-catalog/_doc/{{$json.cve_id}}",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json) }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        -128,
+        -144
+      ],
+      "id": "6f5d4f33-752a-482a-b857-a4177c0a7956",
+      "name": "03 - Index KEV Catalog in Elasticsearch"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "When clicking ‘Execute workflow’": {
+      "main": [
+        [
+          {
+            "node": "01 - Download KEV from GitHub",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "01 - Download KEV from GitHub": {
+      "main": [
+        [
+          {
+            "node": "02 - Normalize KEV Catalog",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "02 - Normalize KEV Catalog": {
+      "main": [
+        [
+          {
+            "node": "03 - Index KEV Catalog in Elasticsearch",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  },
+  "versionId": "9e04b4ed-9d44-47ad-9f20-957217661864",
+  "meta": {
+    "instanceId": "55af0cced9718bf167a4a78ee093b1c0ab097bc889ab4c1637f24017903284cb"
+  },
+  "id": "Tbsc0lPD2CyiEQaN",
+  "tags": []
+}

@@ -1,0 +1,111 @@
+{
+  "name": "01-Update EPSS",
+  "nodes": [
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        -784,
+        -144
+      ],
+      "id": "344f37da-8dab-43ae-9b18-37eaede64cc0",
+      "name": "When clicking ‘Execute workflow’"
+    },
+    {
+      "parameters": {
+        "url": "https://epss.cyentia.com/epss_scores-current.csv.gz",
+        "options": {
+          "response": {
+            "response": {
+              "fullResponse": true,
+              "responseFormat": "file"
+            }
+          }
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        -576,
+        -144
+      ],
+      "id": "6e710c5b-93e6-469d-aa70-267a309d8fce",
+      "name": "01 - Download EPSS"
+    },
+    {
+      "parameters": {
+        "jsCode": "const zlib = require('zlib');\n\n// Segundo argumento: nombre de la propiedad binaria.\n// Si falla, mira en el panel de entrada como se llama (suele ser 'data').\nconst binary = await this.helpers.getBinaryDataBuffer(0, 'data');\nconst csv = zlib.gunzipSync(binary).toString('utf-8');\n\nconst lineas = csv.split('\\n');\n\nlet scoreDate = null;\nconst meta = lineas.find(l => l.startsWith('#'));\nif (meta) {\n  const m = meta.match(/score_date:([0-9T:\\-Z]+)/);\n  if (m) scoreDate = m[1];\n}\n\nconst registros = [];\nfor (const linea of lineas) {\n  const l = linea.trim();\n  if (!l || l.startsWith('#') || l.startsWith('cve,')) continue;\n  const [cve, epss, percentile] = l.split(',');\n  if (!cve) continue;\n  registros.push({\n    json: {\n      cve_id: cve,\n      epss_score: parseFloat(epss) || 0,\n      epss_percentile: parseFloat(percentile) || 0,\n      score_date: scoreDate\n    }\n  });\n}\n\nreturn registros;"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -352,
+        -144
+      ],
+      "id": "9d95c347-ee8d-45f9-89b6-a1244d36b3d7",
+      "name": "02 - Normalize EPSS"
+    },
+    {
+      "parameters": {
+        "jsCode": "const registros = $input.all();\nconst TAM_LOTE = 5000;\nconst ES = 'http://elasticsearch:9200';\n\nlet indexados = 0;\nlet errores = 0;\nconst lotesFallidos = [];\n\nfor (let i = 0; i < registros.length; i += TAM_LOTE) {\n  const lote = registros.slice(i, i + TAM_LOTE);\n  const numLote = Math.floor(i / TAM_LOTE) + 1;\n\n  // Construir el cuerpo NDJSON del _bulk\n  let body = '';\n  for (const item of lote) {\n    const doc = item.json;\n    body += JSON.stringify({ index: { _index: 'epss-scores', _id: doc.cve_id } }) + '\\n';\n    body += JSON.stringify(doc) + '\\n';\n  }\n\n  try {\n    const resp = await this.helpers.httpRequest({\n      method: 'POST',\n      url: `${ES}/_bulk`,\n      headers: { 'Content-Type': 'application/x-ndjson' },\n      body,\n      json: true,\n      timeout: 60000,\n    });\n\n    // _bulk siempre responde 200 aunque documentos concretos fallen:\n    // hay que mirar el flag 'errors' de la respuesta\n    if (resp.errors) {\n      const fallos = (resp.items || []).filter(it => it.index && it.index.error);\n      errores += fallos.length;\n      indexados += lote.length - fallos.length;\n      if (fallos.length) {\n        lotesFallidos.push({ lote: numLote, ejemplo: fallos[0].index.error });\n      }\n    } else {\n      indexados += lote.length;\n    }\n  } catch (e) {\n    errores += lote.length;\n    lotesFallidos.push({ lote: numLote, error: e.message });\n  }\n}\n\nreturn [{\n  json: {\n    total: registros.length,\n    indexados,\n    errores,\n    lotes_fallidos: lotesFallidos.slice(0, 5),\n    ok: errores === 0\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -128,
+        -144
+      ],
+      "id": "03f07246-2036-47fd-ab8f-86f3621cc479",
+      "name": "03 — Index EPSS in Elasticsearch (Code con bulk)"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "When clicking ‘Execute workflow’": {
+      "main": [
+        [
+          {
+            "node": "01 - Download EPSS",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "01 - Download EPSS": {
+      "main": [
+        [
+          {
+            "node": "02 - Normalize EPSS",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "02 - Normalize EPSS": {
+      "main": [
+        [
+          {
+            "node": "03 — Index EPSS in Elasticsearch (Code con bulk)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "availableInMCP": false
+  },
+  "versionId": "f8c0968f-e21b-407f-885a-66de72be5fc5",
+  "meta": {
+    "instanceId": "55af0cced9718bf167a4a78ee093b1c0ab097bc889ab4c1637f24017903284cb"
+  },
+  "id": "ZuRDbNBpy6tczzG6",
+  "tags": []
+}

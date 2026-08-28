@@ -1,0 +1,544 @@
+{
+  "name": "03- TFM - MVP Risk Scoring Activos en Elastic_ NVD+EPSSporlotes+KEV Elastic + IA Node to Elasticsearch",
+  "nodes": [
+    {
+      "parameters": {
+        "mode": "combine",
+        "combineBy": "combineByPosition",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3.2,
+      "position": [
+        -64,
+        272
+      ],
+      "id": "0ba1446b-602a-47f9-80d0-ca0bf41d808b",
+      "name": "03 - Merge Asset + NVD Response"
+    },
+    {
+      "parameters": {
+        "jsCode": "function getCvssData(cve) {\n  const metrics = cve?.metrics || {};\n\n  if (metrics.cvssMetricV31 && metrics.cvssMetricV31.length > 0) {\n    const metric = metrics.cvssMetricV31[0];\n    return {\n      cvss_version: \"3.1\",\n      cvss_source: metric.source || \"NVD\",\n      cvss_base_score: metric.cvssData?.baseScore ?? 0,\n      cvss_base_severity: metric.cvssData?.baseSeverity || \"N/A\",\n      vector_string: metric.cvssData?.vectorString || \"N/A\",\n      exploitability_score: metric.exploitabilityScore ?? null,\n      impact_score: metric.impactScore ?? null\n    };\n  }\n\n  if (metrics.cvssMetricV30 && metrics.cvssMetricV30.length > 0) {\n    const metric = metrics.cvssMetricV30[0];\n    return {\n      cvss_version: \"3.0\",\n      cvss_source: metric.source || \"NVD\",\n      cvss_base_score: metric.cvssData?.baseScore ?? 0,\n      cvss_base_severity: metric.cvssData?.baseSeverity || \"N/A\",\n      vector_string: metric.cvssData?.vectorString || \"N/A\",\n      exploitability_score: metric.exploitabilityScore ?? null,\n      impact_score: metric.impactScore ?? null\n    };\n  }\n\n  if (metrics.cvssMetricV2 && metrics.cvssMetricV2.length > 0) {\n    const metric = metrics.cvssMetricV2[0];\n    return {\n      cvss_version: \"2.0\",\n      cvss_source: metric.source || \"NVD\",\n      cvss_base_score: metric.cvssData?.baseScore ?? 0,\n      cvss_base_severity: metric.baseSeverity || \"N/A\",\n      vector_string: metric.cvssData?.vectorString || \"N/A\",\n      exploitability_score: metric.exploitabilityScore ?? null,\n      impact_score: metric.impactScore ?? null\n    };\n  }\n\n  return {\n    cvss_version: \"N/A\",\n    cvss_source: \"N/A\",\n    cvss_base_score: 0,\n    cvss_base_severity: \"N/A\",\n    vector_string: \"N/A\",\n    exploitability_score: null,\n    impact_score: null\n  };\n}\n\nfunction extractAttackVector(vectorString) {\n  if (!vectorString || vectorString === \"N/A\") return \"N/A\";\n\n  const match = vectorString.match(/AV:([NALP])/);\n  if (!match) return \"N/A\";\n\n  const map = {\n    N: \"NETWORK\",\n    A: \"ADJACENT\",\n    L: \"LOCAL\",\n    P: \"PHYSICAL\"\n  };\n\n  return map[match[1]] || \"N/A\";\n}\n\nfunction extractCvssMetric(vectorString, metricCode) {\n  if (!vectorString || vectorString === \"N/A\") return \"N/A\";\n\n  const regex = new RegExp(`${metricCode}:([^/]+)`);\n  const match = vectorString.match(regex);\n\n  return match ? match[1] : \"N/A\";\n}\n\nfunction getDescription(cve) {\n  const descriptions = cve?.descriptions || [];\n  const english = descriptions.find(d => d.lang === \"en\");\n  return english?.value || \"No English description available.\";\n}\n\nfunction getReferenceUrls(cve) {\n  const references = cve?.references?.referenceData || cve?.references || [];\n\n  if (!Array.isArray(references)) {\n    return [];\n  }\n\n  return references\n    .map(ref => ref.url)\n    .filter(Boolean)\n    .slice(0, 5);\n}\n\nfunction getWeaknesses(cve) {\n  const weaknesses = cve?.weaknesses || [];\n  const cwes = [];\n\n  for (const weakness of weaknesses) {\n    const descriptions = weakness.description || [];\n    for (const desc of descriptions) {\n      if (desc.value) {\n        cwes.push(desc.value);\n      }\n    }\n  }\n\n  return [...new Set(cwes)];\n}\n\n// Procesa TODOS los items que llegan del Merge\nconst mergedItems = $input.all();\n\nconst rows = [];\n\nfor (const item of mergedItems) {\n  const merged = item.json;\n  const vulnerabilities = merged.vulnerabilities || [];\n\n  // Campos contextuales del activo.\n  // Se anaden aqui para que viajen en la tabla maestra Asset-CVE\n  // y esten disponibles posteriormente en el nodo de scoring (08).\n  // IMPORTANTE: deben incluirse los valores _norm y el flag de override,\n  // o el nodo 08 los recibira como undefined y los tratara como 0.\n  const assetContext = {\n    exposure: merged.exposure,\n    exposure_norm: merged.exposure_norm ?? null,\n\n    criticality: merged.criticality,\n    criticality_norm: merged.criticality_norm ?? null,\n    criticality_overridden: merged.criticality_overridden === true,\n    criticality_override_level: merged.criticality_override_level ?? null,\n\n    module_id: merged.module_id ?? null,\n    module_name: merged.module_name ?? null,\n    module_sensitivity: merged.module_sensitivity ?? null,\n    module_sensitivity_norm: merged.module_sensitivity_norm ?? null,\n\n    blast_radius_score: merged.blast_radius_score ?? 0,\n    blast_radius_norm: merged.blast_radius_norm ?? null,\n    blast_radius_status: merged.blast_radius_status ?? \"pending\"\n  };\n\n  // Caso: NVD no devuelve vulnerabilidades\n  if (vulnerabilities.length === 0) {\n    rows.push({\n      json: {\n        asset_id: merged.asset_id,\n        asset_name: merged.asset_name,\n        asset_type: merged.asset_type,\n        software: merged.software,\n        asset_version: merged.asset_version,\n        cpe_name: merged.cpe_name,\n\n        // Contexto del activo\n        ...assetContext,\n\n        cve_id: \"NO_CVE_FOUND\",\n        cve_published: null,\n        cve_last_modified: null,\n        vuln_status: \"NO_CVE_FOUND\",\n        nvd_description: `No CVEs found in NVD for CPE ${merged.cpe_name}`,\n        nvd_references: [],\n        weaknesses: [],\n\n        cvss_version: \"N/A\",\n        cvss_source: \"N/A\",\n        cvss_base_score: 0,\n        cvss_base_severity: \"N/A\",\n        cvss_normalized: 0,\n        vector_string: \"N/A\",\n        exploitability_score: null,\n        impact_score: null,\n\n        attack_vector: \"N/A\",\n        attack_complexity: \"N/A\",\n        privileges_required: \"N/A\",\n        user_interaction: \"N/A\",\n        scope: \"N/A\",\n        confidentiality_impact: \"N/A\",\n        integrity_impact: \"N/A\",\n        availability_impact: \"N/A\",\n\n        epss_score: null,\n        epss_percentile: null,\n        kev_flag: false,\n        kev_date_added: null,\n        kev_due_date: null,\n        kev_known_ransomware: null,\n\n        technical_risk: null,\n        risk_score: null,\n        risk_level: \"INFO\",\n        risk_rationale: `NVD no devolvio vulnerabilidades para ${merged.asset_name}.`,\n\n        source: \"NVD\",\n        pipeline_stage: \"asset_master_table\",\n        created_at: new Date().toISOString()\n      }\n    });\n\n    continue;\n  }\n\n  // Caso normal: una fila por cada CVE del activo\n  for (const vulnWrapper of vulnerabilities) {\n    const cve = vulnWrapper.cve;\n    if (!cve) continue;\n\n    const cvss = getCvssData(cve);\n    const attackVector = extractAttackVector(cvss.vector_string);\n\n    const cvssNormalized = cvss.cvss_base_score\n      ? Number((cvss.cvss_base_score / 10).toFixed(2))\n      : 0;\n\n    rows.push({\n      json: {\n        // Datos del activo\n        asset_id: merged.asset_id,\n        asset_name: merged.asset_name,\n        asset_type: merged.asset_type,\n        software: merged.software,\n        asset_version: merged.asset_version,\n        cpe_name: merged.cpe_name,\n\n        // Contexto del activo\n        ...assetContext,\n\n        // Datos de la CVE/NVD\n        cve_id: cve.id,\n        cve_published: cve.published || null,\n        cve_last_modified: cve.lastModified || null,\n        vuln_status: cve.vulnStatus || \"N/A\",\n        nvd_description: getDescription(cve),\n        nvd_references: getReferenceUrls(cve),\n        weaknesses: getWeaknesses(cve),\n\n        // Datos CVSS\n        cvss_version: cvss.cvss_version,\n        cvss_source: cvss.cvss_source,\n        cvss_base_score: cvss.cvss_base_score,\n        cvss_base_severity: cvss.cvss_base_severity,\n        cvss_normalized: cvssNormalized,\n        vector_string: cvss.vector_string,\n        exploitability_score: cvss.exploitability_score,\n        impact_score: cvss.impact_score,\n\n        // Vector CVSS parseado\n        attack_vector: attackVector,\n        attack_complexity: extractCvssMetric(cvss.vector_string, \"AC\"),\n        privileges_required: extractCvssMetric(cvss.vector_string, \"PR\"),\n        user_interaction: extractCvssMetric(cvss.vector_string, \"UI\"),\n        scope: extractCvssMetric(cvss.vector_string, \"S\"),\n        confidentiality_impact: extractCvssMetric(cvss.vector_string, \"C\"),\n        integrity_impact: extractCvssMetric(cvss.vector_string, \"I\"),\n        availability_impact: extractCvssMetric(cvss.vector_string, \"A\"),\n\n        // Campos preparados para enriquecimiento posterior\n        epss_score: null,\n        epss_percentile: null,\n        kev_flag: false,\n        kev_date_added: null,\n        kev_due_date: null,\n        kev_known_ransomware: null,\n\n        // Campos preparados para scoring\n        technical_risk: null,\n        risk_score: null,\n        risk_level: null,\n        risk_rationale: null,\n\n        // Metadatos\n        source: \"NVD\",\n        pipeline_stage: \"asset_master_table\",\n        created_at: new Date().toISOString()\n      }\n    });\n  }\n}\n\nreturn rows;"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        160,
+        272
+      ],
+      "id": "7a169722-b5a6-45bd-803d-46a1fcfd884d",
+      "name": "04 - Asset-CVE Master Table"
+    },
+    {
+      "parameters": {
+        "jsCode": "return items[0].json.hits.hits.map(h => ({ json: h._source }));"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -784,
+        256
+      ],
+      "id": "ec185412-e0db-4fa7-8575-d4be5cd0d3c3",
+      "name": "01b-Flatten hits"
+    },
+    {
+      "parameters": {
+        "jsCode": "// ============================================================================\n// NODO 01c - NORMALIZE ASSETS\n// ----------------------------------------------------------------------------\n// Deriva las magnitudes normalizadas del ContextFactor para cada activo.\n//\n// Reparto de responsabilidades por naturaleza de cada dimensión:\n//   - CPE y exposure  -> DECLARADOS en el activo (propiedad del activo).\n//                        Aquí solo se normaliza la exposición.\n//   - module_sensitivity -> DERIVADA del módulo (propiedad del módulo).\n//   - criticality     -> DEFAULT del módulo/subgrupo + OVERRIDE del analista.\n//   - blast_radius    -> CALCULADO dinámicamente desde la matriz de alcance\n//                        sobre los módulos PRESENTES en el inventario.\n// ============================================================================\n\n// ---------------------------------------------------------------------------\n// MAPAS DE ESCALA (1-5) -> normalización /5\n// ---------------------------------------------------------------------------\nconst exposureMap = {\n  isolated: 1,\n  restricted_internal: 2,\n  internal: 3,\n  dmz: 4,\n  internet: 5\n};\n\n// Nombre por módulo padre (para descripción)\nconst moduleNameMap = {\n  B01: \"Perímetro web\",\n  B02: \"Aplicación\",\n  B03: \"Datos relacionales\",\n  B04: \"Identidad corporativa\",\n  B05: \"Conectividad segura\",\n  B06: \"SDN / microsegmentación\",\n  B07: \"Cloud compute\",\n  B08: \"Cloud storage\",\n  B09: \"Cloud identidad\",\n  B10: \"Contenedores\",\n  B11: \"OT / Industrial\",\n  B12: \"Endpoints\"\n};\n\n// Sensibilidad por sub-código (propiedad del módulo). Sin cambios.\nconst moduleSensitivityMap = {\n  \"B01\": 4,\n  \"B02.1\": 3, \"B02.2\": 4,\n  \"B03.1\": 4, \"B03.2\": 5,\n  \"B04\": 5,\n  \"B05\": 5,\n  \"B06.1\": 4, \"B06.2\": 5,\n  \"B07\": 4,\n  \"B08.1\": 4, \"B08.2\": 5,\n  \"B09\": 5,\n  \"B10.1\": 4, \"B10.2\": 5,\n  \"B11\": 4,\n  \"B12.1\": 3, \"B12.2\": 4, \"B12.3\": 5\n};\n\n// ---------------------------------------------------------------------------\n// CRITICIDAD POR DEFECTO (por sub-código; escala 1-5).\n// Es el valor de partida asociado al módulo/subgrupo. Se AJUSTA por activo\n// mediante override (que activa H=1). Escala: Bajo=2, Medio=3, Alto=4, Crítico=5.\n// (negligible=1 se reserva por completitud de la escala.)\n// ---------------------------------------------------------------------------\nconst criticalityDefaultMap = {\n  \"B01\": 4,                       // Alto\n  \"B02.1\": 3, \"B02.2\": 4,         // Medio / Alto\n  \"B03.1\": 3, \"B03.2\": 4,         // Medio / Alto\n  \"B04\": 5,                       // Crítico\n  \"B05\": 4,                       // Alto\n  \"B06.1\": 3, \"B06.2\": 3,         // Medio / Medio\n  \"B07\": 3,                       // Medio\n  \"B08.1\": 3, \"B08.2\": 4,         // Medio / Alto\n  \"B09\": 5,                       // Crítico\n  \"B10.1\": 3, \"B10.2\": 3,         // Medio / Medio\n  \"B11\": 3,                       // Medio (PLC/CAM se ajustan por override)\n  \"B12.1\": 2, \"B12.2\": 3, \"B12.3\": 4  // Bajo / Medio / Alto\n};\n\n// Mapa de nivel textual de override -> valor 1-5 (para criticality_override_level)\nconst criticalityLevelMap = {\n  negligible: 1,\n  low: 2,\n  medium: 3,\n  high: 4,\n  critical: 5\n};\n\n// ---------------------------------------------------------------------------\n// MATRIZ DE ALCANCE DIRECTO (incluye el propio módulo).\n// Cada entrada lista los módulos alcanzables DIRECTAMENTE desde el módulo clave.\n// El blast radius se calcula sobre los módulos realmente PRESENTES.\n// ---------------------------------------------------------------------------\nconst reachMatrix = {\n  B01: [\"B01\", \"B02\"],\n  B02: [\"B02\", \"B03\", \"B04\", \"B08\", \"B09\"],\n  B03: [\"B03\"],\n  B04: [\"B01\", \"B02\", \"B03\", \"B04\", \"B09\", \"B12\"],\n  B05: [\"B01\", \"B02\", \"B03\", \"B04\", \"B05\", \"B06\", \"B07\", \"B08\", \"B10\", \"B11\", \"B12\"],\n  B06: [\"B01\", \"B02\", \"B03\", \"B04\", \"B05\", \"B06\", \"B07\", \"B08\", \"B10\", \"B11\", \"B12\"],\n  B07: [\"B07\", \"B08\", \"B09\", \"B10\"],\n  B08: [\"B08\"],\n  B09: [\"B02\", \"B04\", \"B07\", \"B08\", \"B09\", \"B10\", \"B12\"],\n  B10: [\"B02\", \"B07\", \"B08\", \"B09\", \"B10\"],\n  B11: [\"B11\"],\n  B12: [\"B02\", \"B04\", \"B07\", \"B09\", \"B12\"]\n};\n\n// Pesos de propagación por profundidad\nconst WEIGHT_DIRECT = 1.0;   // alcance directo\nconst WEIGHT_ONEHOP = 0.5;   // alcance a un salto\n\n// ---------------------------------------------------------------------------\n// Utilidades\n// ---------------------------------------------------------------------------\nconst moduleParent = (mid) => (mid || \"\").split(\".\")[0];\n\n/**\n * Calcula el blast_radius_norm de un módulo dado el conjunto de módulos presentes.\n *   numerador = (# directos presentes) * 1.0 + (# a-un-salto presentes, vía\n *               intermediario presente, excluyendo los ya directos) * 0.5\n *   blast_radius_norm = numerador / N   (N = nº de módulos presentes)\n * Cada módulo se alcanza a sí mismo (incluido en reachMatrix), garantizando un\n * radio estrictamente positivo.\n */\nfunction computeBlastRadius(mod, presentSet, N) {\n  const neighbors = reachMatrix[mod] || [mod];\n  const direct = neighbors.filter((m) => presentSet.has(m));\n  const directSet = new Set(direct);\n\n  const oneHop = new Set();\n  for (const inter of direct) {\n    const interNeighbors = reachMatrix[inter] || [];\n    for (const m of interNeighbors) {\n      if (presentSet.has(m) && !directSet.has(m)) {\n        oneHop.add(m);\n      }\n    }\n  }\n\n  const numerator = direct.length * WEIGHT_DIRECT + oneHop.size * WEIGHT_ONEHOP;\n  return Number((numerator / N).toFixed(4));\n}\n\n// ===========================================================================\n// PROCESAMIENTO\n// ===========================================================================\n\n// --- Paso 1: determinar los módulos PRESENTES en el inventario (visión global) ---\nconst presentModules = new Set(\n  items.map((it) => moduleParent(it.json.module_id)).filter(Boolean)\n);\nconst N = presentModules.size;\n\n// --- Paso 2: precalcular el blast radius de cada módulo presente (una vez) ---\nconst blastRadiusByModule = {};\nfor (const mod of presentModules) {\n  blastRadiusByModule[mod] = computeBlastRadius(mod, presentModules, N);\n}\n\n// --- Paso 3: normalizar cada activo ---\nreturn items.map((item) => {\n  const a = item.json;\n\n  // Exposición (declarada en el activo -> solo se normaliza)\n  const exposureScore = exposureMap[a.exposure] ?? null;\n\n  // Módulo\n  const parent = moduleParent(a.module_id);\n  const moduleName = moduleNameMap[parent] ?? \"Unknown\";\n\n  // Sensibilidad de módulo (derivada)\n  const moduleSensitivity = moduleSensitivityMap[a.module_id] ?? null;\n\n  // --- Criticidad: default de módulo, salvo override del analista ---\n  const isOverridden = a.criticality_overridden === true;\n  let criticalityScore;\n  let criticalitySource;\n  if (isOverridden) {\n    // El analista fijó el nivel en criticality_override_level (low/high/...)\n    criticalityScore = criticalityLevelMap[a.criticality_override_level] ?? null;\n    criticalitySource = \"override\";\n  } else {\n    // Valor por defecto del módulo/subgrupo\n    criticalityScore = criticalityDefaultMap[a.module_id]\n                    ?? criticalityDefaultMap[parent]\n                    ?? null;\n    criticalitySource = \"default\";\n  }\n  const criticalityNorm =\n    criticalityScore !== null ? Number((criticalityScore / 5).toFixed(4)) : null;\n\n  // Flag H: 1 cuando hay override de criticidad\n  const hFlag = isOverridden ? 1 : 0;\n\n  // --- Blast radius: calculado desde la matriz sobre módulos presentes ---\n  const blastRadiusNorm = blastRadiusByModule[parent] ?? null;\n\n  return {\n    json: {\n      ...a,\n\n      // Exposición\n      exposure_score: exposureScore,\n      exposure_norm: exposureScore !== null\n        ? Number((exposureScore / 5).toFixed(4)) : null,\n\n      // Criticidad\n      criticality_score: criticalityScore,\n      criticality_norm: criticalityNorm,\n      criticality_source: criticalitySource,   // \"default\" | \"override\"\n      h_flag: hFlag,\n\n      // Módulo\n      module_id: a.module_id,\n      module_parent: parent,\n      module_name: moduleName,\n\n      // Sensibilidad\n      module_sensitivity: moduleSensitivity,\n      module_sensitivity_norm: moduleSensitivity !== null\n        ? Number((moduleSensitivity / 5).toFixed(4)) : null,\n\n      // Blast radius (calculado dinámicamente)\n      blast_radius_norm: blastRadiusNorm,\n      blast_radius_modules_present: N   // trazabilidad: N usado en el cálculo\n    }\n  };\n});"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -576,
+        256
+      ],
+      "id": "1701bea2-1cd6-4d6b-a787-3084ff623e66",
+      "name": "01c-Normalize assets"
+    },
+    {
+      "parameters": {
+        "jsCode": "// ============================================================\n// 07 - Calculate CVE Technical Risk\n// Calcula SOLO el riesgo técnico de cada CVE (por par activo-CVE).\n//   TechnicalRisk = 0.40*CVSS_norm + 0.35*EPSS_norm + 0.25*KEV_flag\n//\n// El contexto (ContextFactor, override H) y el FinalRisk NO se calculan\n// aquí: son propiedad del ACTIVO y se aplican en el nodo 08, sobre la\n// CVE de mayor TechnicalRisk. Este nodo arrastra el contexto del activo\n// intacto para que el 08 lo tenga disponible.\n// ============================================================\n\nfunction clamp(value, min = 0, max = 1) {\n  const num = Number(value);\n  if (!Number.isFinite(num)) return min;\n  return Math.min(Math.max(num, min), max);\n}\n\nfunction normalizeCvss(cvss) {\n  const value = Number(cvss ?? 0);\n  return clamp(value / 10);\n}\n\nfunction normalizeEpss(epss) {\n  const value = Number(epss ?? 0);\n  if (value > 1) {\n    return clamp(value / 100);\n  }\n  return clamp(value);\n}\n\nfunction normalizeKev(kevFlag) {\n  if (kevFlag === true) return 1;\n  if (kevFlag === false) return 0;\n  const value = String(kevFlag ?? \"\").toLowerCase().trim();\n  if ([\"true\", \"yes\", \"y\", \"1\", \"kev\"].includes(value)) {\n    return 1;\n  }\n  return 0;\n}\n\nconst inputItems = $input.all();\nconst output = [];\n\nfor (const item of inputItems) {\n  const row = item.json;\n\n  // Caso: activo sin CVEs -> technical risk 0, se arrastra el contexto\n  if (row.cve_id === \"NO_CVE_FOUND\") {\n    output.push({\n      json: {\n        ...row,\n        cvss_norm: 0,\n        epss_norm: 0,\n        kev_flag: false,\n        kev_norm: 0,\n        technical_risk: 0,\n        technical_risk_level: \"INFO\",\n        scoring_model: \"technical_risk_v4\",\n        scoring_formula: \"TechnicalRisk = 0.40*CVSS_norm + 0.35*EPSS_norm + 0.25*KEV_flag\",\n        pipeline_stage: \"cve_technical_risk\",\n        technical_risk_at: new Date().toISOString()\n      }\n    });\n    continue;\n  }\n\n  // --- Normalización de los tres componentes técnicos ---\n  const cvss = Number(row.cvss_base_score ?? row.cvss_score ?? 0);\n  const epssScore = Number(row.epss_score ?? 0);\n\n  const cvssNorm = Number(\n    row.cvss_norm ??\n    row.cvss_normalized ??\n    normalizeCvss(cvss)\n  );\n  const epssNorm = Number(\n    row.epss_norm ??\n    normalizeEpss(epssScore)\n  );\n  const kevNorm = normalizeKev(row.kev_flag);\n\n  // --- TechnicalRisk (único cálculo de este nodo) ---\n  const technicalRisk =\n    (0.40 * cvssNorm) +\n    (0.35 * epssNorm) +\n    (0.25 * kevNorm);\n\n  const technicalRiskRounded = Number(technicalRisk.toFixed(4));\n\n  output.push({\n    json: {\n      ...row,\n\n      // Componentes técnicos normalizados\n      cvss_score: cvss,\n      cvss_norm: Number(cvssNorm.toFixed(4)),\n      epss_score: epssScore,\n      epss_norm: Number(epssNorm.toFixed(4)),\n      kev_flag: kevNorm === 1,\n      kev_norm: kevNorm,\n\n      // Componentes ponderados (auditoría)\n      cvss_component: Number((0.40 * cvssNorm).toFixed(4)),\n      epss_component: Number((0.35 * epssNorm).toFixed(4)),\n      kev_component: Number((0.25 * kevNorm).toFixed(4)),\n\n      // Resultado: riesgo técnico de la CVE\n      technical_risk: technicalRiskRounded,\n\n      // Contexto del activo: se arrastra INTACTO para el nodo 08.\n      // NO se aplica aquí (el contexto pertenece al activo, no a la CVE).\n      // exposure_norm, criticality_norm, module_sensitivity_norm,\n      // blast_radius_norm, criticality_overridden ya viajan en ...row\n\n      scoring_model: \"technical_risk_v4\",\n      scoring_formula: \"TechnicalRisk = 0.40*CVSS_norm + 0.35*EPSS_norm + 0.25*KEV_flag\",\n\n      pipeline_stage: \"cve_technical_risk\",\n      technical_risk_at: new Date().toISOString()\n    }\n  });\n}\n\nreturn output;"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1008,
+        272
+      ],
+      "id": "a715f242-29b4-48c6-b33a-6c1aefa72f38",
+      "name": "07 - Calculate Technical Risk -CVE"
+    },
+    {
+      "parameters": {
+        "jsCode": "// ============================================================\n// 08 - Calculate Asset Final Risk  (FÓRMULA v4)\n//\n//   H = 1 si criticality_overridden === true, si no H = 0\n//   ContextFactor = 0.20*(1+H)*Criticality_norm\n//                 + 0.20*(1-H)*ModuleSensitivity_norm\n//                 + 0.30*Exposure_norm\n//                 + 0.30*BlastRadius_norm\n//   FinalRisk = TechnicalRisk * (1 + ContextFactor) / 2   -> [0,1]\n//\n//   Umbrales: CRITICAL >=0.80 / HIGH >=0.60 / MEDIUM >=0.40 / LOW <0.40\n//\n// El contexto se aplica aquí (nivel activo) y NO en el nodo 07,\n// porque el contexto es propiedad del ACTIVO, no de la vulnerabilidad.\n// ============================================================\n\nfunction clamp(value, min = 0, max = 1) {\n  const num = Number(value);\n  if (!Number.isFinite(num)) return min;\n  return Math.min(Math.max(num, min), max);\n}\n\nfunction toNumber(value, fallback = 0) {\n  const num = Number(value);\n  return Number.isFinite(num) ? num : fallback;\n}\n\nfunction toBoolean(value) {\n  if (value === true) return true;\n  if (value === false) return false;\n  const normalized = String(value ?? \"\").toLowerCase().trim();\n  return [\"true\", \"yes\", \"y\", \"1\", \"kev\"].includes(normalized);\n}\n\nfunction riskLevel(score) {\n  if (score >= 0.80) return \"CRITICAL\";\n  if (score >= 0.60) return \"HIGH\";\n  if (score >= 0.40) return \"MEDIUM\";\n  return \"LOW\";\n}\n\n// --- Agrupación por activo ---\nconst items = $input.all().map(item => item.json);\nconst grouped = {};\n\nfor (const row of items) {\n  const assetId = row.asset_id ?? \"UNKNOWN_ASSET\";\n\n  if (!grouped[assetId]) {\n    grouped[assetId] = {\n      asset_id: row.asset_id,\n      asset_name: row.asset_name,\n      asset_type: row.asset_type,\n\n      software: row.software,\n      asset_version: row.asset_version,\n      cpe_name: row.cpe_name,\n\n      module_id: row.module_id,\n      module_name: row.module_name,\n      module_sensitivity_norm: toNumber(row.module_sensitivity_norm),\n\n      exposure: row.exposure,\n      exposure_norm: toNumber(row.exposure_norm),\n\n      criticality: row.criticality,\n      criticality_norm: toNumber(row.criticality_norm),\n\n      blast_radius_norm: toNumber(row.blast_radius_norm, 0),\n      blast_radius_status: row.blast_radius_status ?? \"pending\",\n\n      criticality_overridden: row.criticality_overridden === true,\n      criticality_override_level: row.criticality_override_level ?? null,\n\n      cves: []\n    };\n  }\n\n  if (row.cve_id !== \"NO_CVE_FOUND\") {\n    grouped[assetId].cves.push({\n      cve_id: row.cve_id,\n      cvss_base_score: toNumber(row.cvss_base_score ?? row.cvss_score),\n      cvss_base_severity: row.cvss_base_severity,\n      cvss_norm: toNumber(row.cvss_norm),\n      attack_vector: row.attack_vector,\n      epss_score: toNumber(row.epss_score),\n      epss_percentile: toNumber(row.epss_percentile),\n      epss_norm: toNumber(row.epss_norm),\n      kev_flag: toBoolean(row.kev_flag),\n      kev_norm: toNumber(row.kev_norm),\n      technical_risk: toNumber(row.technical_risk),\n      nvd_description: row.nvd_description\n    });\n  }\n}\n\nconst output = [];\nconst scoredAt = new Date().toISOString();\n\nconst SCORING_FORMULA =\n  \"ContextFactor=0.20*(1+H)*Criticality_norm+0.20*(1-H)*ModuleSensitivity_norm+0.30*Exposure_norm+0.30*BlastRadius_norm; FinalRisk=TechnicalRisk*(1+ContextFactor)/2; H=1 si criticality_overridden\";\n\nfor (const asset of Object.values(grouped)) {\n  const cves = asset.cves;\n\n  // --- H binario: interruptor del override ---\n  const H = asset.criticality_overridden === true ? 1 : 0;\n  const contextMode = H === 1 ? \"override\" : \"auto\";\n\n  const exposureNorm = clamp(asset.exposure_norm);\n  const criticalityNorm = clamp(asset.criticality_norm);\n  const moduleSensitivityNorm = clamp(asset.module_sensitivity_norm);\n  const blastRadiusNorm = clamp(asset.blast_radius_norm);\n\n  // --- ContextFactor unificado (pesos suman 1.0 para todo H) ---\n  const contextFactor =\n    0.20 * (1 + H) * criticalityNorm +\n    0.20 * (1 - H) * moduleSensitivityNorm +\n    0.30 * exposureNorm +\n    0.30 * blastRadiusNorm;\n\n  const contextFactorRounded = Number(contextFactor.toFixed(4));\n\n  // --- Campos comunes a ambos casos ---\n  const base = {\n    asset_id: asset.asset_id,\n    asset_name: asset.asset_name,\n    asset_type: asset.asset_type,\n    software: asset.software,\n    asset_version: asset.asset_version,\n    cpe_name: asset.cpe_name,\n    module_id: asset.module_id,\n    module_name: asset.module_name,\n\n    exposure: asset.exposure,\n    exposure_norm: Number(exposureNorm.toFixed(4)),\n    criticality: asset.criticality,\n    criticality_norm: Number(criticalityNorm.toFixed(4)),\n    module_sensitivity_norm: Number(moduleSensitivityNorm.toFixed(4)),\n    blast_radius_norm: Number(blastRadiusNorm.toFixed(4)),\n    blast_radius_status: asset.blast_radius_status,\n\n    criticality_overridden: asset.criticality_overridden,\n    criticality_override_level: asset.criticality_override_level,\n    h_flag: H,\n    context_mode: contextMode,\n    context_factor: contextFactorRounded,\n\n    aggregation_method: \"max technical_risk per asset, context applied once\",\n    scoring_model: \"asset_final_risk_v4\",\n    scoring_formula: SCORING_FORMULA,\n\n    phase: \"baseline\",\n    pipeline_stage: \"asset_final_risk_v4\",\n    is_latest: true,\n    \"@timestamp\": scoredAt\n  };\n\n  // --- Caso: activo sin CVEs ---\n  if (cves.length === 0) {\n    output.push({\n      json: {\n        ...base,\n\n        total_cves: 0,\n        critical_cves: 0,\n        high_cves: 0,\n        kev_cves: 0,\n\n        max_technical_risk: null,\n        avg_technical_risk: null,\n\n        final_risk_score: 0,\n        risk_level: \"INFO\",\n\n        top_cve_id: null,\n        technical_risk: null,\n        top_cve_cvss: null,\n        top_cve_epss: null,\n        top_cve_kev: false,\n\n        asset_rationale: `No se identificaron CVEs asociadas al activo ${asset.asset_name}.`\n      }\n    });\n    continue;\n  }\n\n  // --- Selección de la top CVE por TechnicalRisk ---\n  const sortedByTechnicalRisk = [...cves].sort(\n    (a, b) => b.technical_risk - a.technical_risk\n  );\n  const topCve = sortedByTechnicalRisk[0];\n\n  const maxTechnicalRisk = topCve.technical_risk;\n\n  // --- FinalRisk: se contextualiza SOLO la top CVE ---\n  const finalRiskRaw = maxTechnicalRisk * (1 + contextFactor) / 2;\n  const finalRiskScore = Number(Math.min(finalRiskRaw, 1).toFixed(3));\n  const finalRiskLevel = riskLevel(finalRiskScore);\n\n  // --- Estadísticas de apoyo ---\n  const kevCves = cves.filter(cve => cve.kev_flag === true).length;\n  const criticalCves = cves.filter(cve => cve.cvss_base_score >= 9.0).length;\n  const highCves = cves.filter(\n    cve => cve.cvss_base_score >= 7.0 && cve.cvss_base_score < 9.0\n  ).length;\n\n  const avgTechnicalRisk =\n    cves.reduce((sum, cve) => sum + toNumber(cve.technical_risk), 0) / cves.length;\n\n  output.push({\n    json: {\n      ...base,\n\n      total_cves: cves.length,\n      critical_cves: criticalCves,\n      high_cves: highCves,\n      kev_cves: kevCves,\n\n      max_technical_risk: Number(maxTechnicalRisk.toFixed(4)),\n      avg_technical_risk: Number(avgTechnicalRisk.toFixed(4)),\n\n      final_risk_score: finalRiskScore,\n      risk_level: finalRiskLevel,\n\n      top_cve_id: topCve.cve_id,\n      technical_risk: Number(maxTechnicalRisk.toFixed(4)),\n      top_cve_cvss: topCve.cvss_base_score,\n      top_cve_epss: topCve.epss_score,\n      top_cve_kev: topCve.kev_flag,\n\n      asset_rationale: `El activo ${asset.asset_name} (${asset.exposure}, criticidad ${asset.criticality}) presenta ${cves.length} CVE(s). La de mayor riesgo técnico es ${topCve.cve_id} (TR ${maxTechnicalRisk.toFixed(3)}, CVSS ${topCve.cvss_base_score}, EPSS ${topCve.epss_score}${topCve.kev_flag ? \", en catálogo KEV\" : \"\"}). Aplicando el contexto del activo (CF ${contextFactorRounded}, modo ${contextMode}), el riesgo final es ${finalRiskScore} → ${finalRiskLevel}.`\n    }\n  });\n}\n\nreturn output;"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1312,
+        272
+      ],
+      "id": "6d1b63d5-20cc-4779-8859-06c7771bb735",
+      "name": "08 -Final Risk Score- Asset"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=http://elasticsearch:9200/technical-risk-cve/_doc/{{ $json.asset_id }}_{{ $json.cve_id }}",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ $json }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        1088,
+        800
+      ],
+      "id": "7bcbb836-834c-4800-967c-7d680ac52a07",
+      "name": "07b - Index Asset-CVE Risk in Elasticsearch"
+    },
+    {
+      "parameters": {
+        "inputSource": "passthrough"
+      },
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1.1,
+      "position": [
+        -1232,
+        256
+      ],
+      "id": "07396e2b-704c-42ad-9d0f-a93d120638f3",
+      "name": "When Executed by Another Workflow"
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "={{ JSON.stringify({\n  asset_id: $json.asset_id,\n  software: $json.software,\n  version: $json.asset_version,\n  cpe_name: $json.cpe_name,\n  cve_id: $json.top_cve_id,\n  cvss: $json.top_cve_cvss,\n  epss: $json.top_cve_epss,\n  kev: $json.top_cve_kev,\n  technical_risk: $json.technical_risk,\n  exposure_norm: $json.exposure_norm,\n  criticality_norm: $json.criticality_norm,\n  blast_radius_norm: $json.blast_radius_norm,\n  context_factor: $json.context_factor,\n  final_risk: $json.final_risk_score,\n  risk_level: $json.risk_level\n}) }}",
+        "messages": {
+          "messageValues": [
+            {
+              "message": "Eres un analista de remediación de vulnerabilidades. Recibes UNA CVE con el contexto de exposición ya calculado por un pipeline (exposure, criticality, blast_radius, context_factor, final_risk, risk_level). NO recalcules ni cuestiones estos valores: son verdad de entrada, úsalos tal cual.\n\nDevuelve EXCLUSIVAMENTE un objeto JSON válido, sin markdown, sin backticks, sin preámbulo ni texto fuera del JSON. Esquema exacto:\n{\n  \"attack_technique\": \"ID + nombre MITRE ATT&CK (ej. T1190 Exploit Public-Facing Application)\",\n  \"remediation_primary\": \"parche o cambio de configuración concreto y verificable, específico de la versión y CVE indicadas\",\n  \"remediation_compensating\": \"control compensatorio si no se puede parchear de inmediato. Trátalo como sugerencia a validar; si no estás seguro, indica que requiere análisis manual en vez de inventar un control\",\n  \"priority_rationale\": \"1-3 frases justificando la prioridad CITANDO el valor numérico de context_factor y por qué este activo va antes o después que otros con riesgo técnico similar\"\n}\n\nReglas:\n- remediation_primary debe ser accionable y específico (versión concreta a la que actualizar, directiva de configuración exacta), no genérico.\n- Si no hay parche, dilo en remediation_primary y apóyate en remediation_compensating.\n- priority_rationale DEBE referenciar el valor de context_factor. Es la aportación diferencial: la priorización viene del contexto del activo, no solo del CVSS.\n- No reclasifiques risk_level ni sugieras cambiarlo. Consúmelo como dato."
+            }
+          ]
+        },
+        "batching": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.chainLlm",
+      "typeVersion": 1.9,
+      "position": [
+        1664,
+        272
+      ],
+      "id": "fb24e9fb-46f8-419a-898d-a4e2284290cc",
+      "name": "Basic LLM Chain"
+    },
+    {
+      "parameters": {
+        "model": {
+          "__rl": true,
+          "mode": "list",
+          "value": "claude-sonnet-4-6",
+          "cachedResultName": "Claude Sonnet 4.6"
+        },
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatAnthropic",
+      "typeVersion": 1.5,
+      "position": [
+        1664,
+        480
+      ],
+      "id": "2e65a585-26be-4c0c-8f07-8dc7c40d3410",
+      "name": "Anthropic Chat Model1",
+      "credentials": {
+        "anthropicApi": {
+          "id": "6NH7VJA0hd0krEak",
+          "name": "Anthropic account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Reemplaza: consulta EPSS + Merge + \"05 add epss column\"\nconst items = $input.all();\n\n// IDs unicos de CVE, descartando los que no tienen\nconst cveIds = [...new Set(\n  items.map(i => i.json.cve_id).filter(id => id && id !== 'NO_CVE_FOUND')\n)];\n\n// Una sola consulta _mget al indice local\nconst resp = await this.helpers.httpRequest({\n  method: 'POST',\n  url: 'http://elasticsearch:9200/epss-scores/_mget',\n  headers: { 'Content-Type': 'application/json' },\n  body: { ids: cveIds },\n  json: true,\n});\n\n// Mapa cve_id -> EPSS\nconst epssMap = {};\nfor (const d of resp.docs || []) {\n  if (d.found) {\n    epssMap[d._id] = {\n      epss_score: d._source.epss_score,\n      epss_percentile: d._source.epss_percentile,\n    };\n  }\n}\n\n// Enriquecer cada item\nreturn items.map(item => {\n  const row = item.json;\n  const epss = epssMap[row.cve_id];\n  const epssScore = epss ? Number(epss.epss_score) : 0;\n  const epssPercentile = epss ? Number(epss.epss_percentile) : 0;\n\n  return {\n    json: {\n      ...row,\n      epss_score: Number(epssScore.toFixed(6)),\n      epss_percentile: Number(epssPercentile.toFixed(6)),\n      epss_source: \"EPSS local index (epss-scores)\",\n      pipeline_stage: \"epss_enriched\",\n      epss_enriched_at: new Date().toISOString()\n    }\n  };\n});"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        432,
+        272
+      ],
+      "id": "ff0511ae-c6eb-482d-836a-44ef84dc83b4",
+      "name": "05 Query EPSS by CVE"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Lookup KEV desde el indice local, reemplaza query + merge\nconst items = $input.all();\n\nconst cveIds = [...new Set(\n  items.map(i => i.json.cve_id).filter(id => id && id !== 'NO_CVE_FOUND')\n)];\n\nconst resp = await this.helpers.httpRequest({\n  method: 'POST',\n  url: 'http://elasticsearch:9200/kev-catalog/_mget',\n  headers: { 'Content-Type': 'application/json' },\n  body: { ids: cveIds },\n  json: true,\n});\n\n// Mapa cve_id -> datos KEV (solo los que estan en el catalogo)\nconst kevMap = {};\nfor (const d of resp.docs || []) {\n  if (d.found) {\n    kevMap[d._id] = d._source;\n  }\n}\n\nreturn items.map(item => {\n  const row = item.json;\n  const kev = kevMap[row.cve_id];\n  return {\n    json: {\n      ...row,\n      kev_flag: !!kev,\n      kev_date_added: kev ? (kev.dateAdded ?? kev.date_added ?? null) : null,\n      kev_due_date: kev ? (kev.dueDate ?? kev.due_date ?? null) : null,\n      kev_known_ransomware: kev ? (kev.knownRansomwareCampaignUse ?? kev.known_ransomware ?? null) : null,\n      kev_source: \"KEV local index (kev-catalog)\",\n      pipeline_stage: \"kev_enriched\"\n    }\n  };\n});"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        704,
+        272
+      ],
+      "id": "4dac185e-9713-4e71-adb4-e46ada043875",
+      "name": "06 Query KEV by CVE"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Recupera el documento de scoring del nodo 08 y le fusiona la remediacion de Claude\nconst scoringItems = $('08 -Final Risk Score- Asset').all();\nconst llmItems = $input.all();\n\nreturn llmItems.map((llmItem, i) => {\n  const scoring = scoringItems[i].json;   // el documento con todo el scoring\n\n  // Extraer el texto que devolvio Claude\n  let raw = (llmItem.json.text || llmItem.json.output || '').toString().trim();\n  // Quitar fences ```json ... ```\n  raw = raw.replace(/^```json\\s*/i, '').replace(/^```\\s*/, '').replace(/```\\s*$/, '').trim();\n\n  let remediation;\n  try {\n    remediation = JSON.parse(raw);\n  } catch (e) {\n    remediation = {\n      attack_technique: null,\n      remediation_primary: null,\n      remediation_compensating: null,\n      priority_rationale: null,\n      _remediation_error: `JSON parse failed: ${e.message}`\n    };\n  }\n\n  return {\n    json: {\n      ...scoring,                    // TODO el scoring (asset_id, final_risk, @timestamp...)\n      ...remediation,                // los 4 campos de Claude\n      remediation_model: 'claude-sonnet-4-6',\n      remediation_generated_at: new Date().toISOString()\n    }\n  };\n});"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1984,
+        272
+      ],
+      "id": "9fa09b73-4bb9-41a9-a8b2-247b9318c7c8",
+      "name": "08b - Parse + Merge Remediation"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://elasticsearch:9200/asset-inventory-v1/_search",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "{ \"size\": 100, \"query\": { \"match_all\": {} } }",
+        "options": {
+          "allowUnauthorizedCerts": true
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        -992,
+        256
+      ],
+      "id": "635a72fe-f496-4fca-a43f-ad3b4ab3ad5e",
+      "name": "01a-Fetch inventory"
+    },
+    {
+      "parameters": {
+        "url": "https://services.nvd.nist.gov/rest/json/cves/2.0",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "cpeName",
+              "value": "={{ $json.cpe_name }}"
+            },
+            {
+              "name": "resultsPerPage",
+              "value": "2000"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        -304,
+        480
+      ],
+      "id": "f0cb59fc-1044-416f-82e7-e47eeb059aab",
+      "name": "02 - Query NVD by CPE",
+      "retryOnFail": false,
+      "waitBetweenTries": 2000
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=http://elasticsearch:9200/asset-final-risk/_doc/{{ $json.asset_id }}?refresh=wait_for",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json) }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        1888,
+        800
+      ],
+      "id": "556565c0-4a3a-4bad-b4c6-284c5c57fc3a",
+      "name": "08c - Index Asset Risk in Elasticsearch"
+    },
+    {
+      "parameters": {
+        "content": "                                                                                                                                     \n## 1. INGESTA\n**Ingesta de inventario y consulta NVD por CPE**",
+        "height": 528,
+        "width": 1616,
+        "color": 4
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -1280,
+        128
+      ],
+      "id": "45ef2754-cb68-4fe1-bcf5-d76044430c2b",
+      "name": "Sticky Note"
+    },
+    {
+      "parameters": {
+        "content": "                                                                                                                                     \n## 2. ENRIQUECIMIENTO\n**EPSS + KEV**",
+        "height": 528,
+        "width": 528,
+        "color": 3
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        368,
+        128
+      ],
+      "id": "92c05ea8-b9de-4492-ae79-3ec9657bd760",
+      "name": "Sticky Note1"
+    },
+    {
+      "parameters": {
+        "content": "                                                                                                                                     \n## 3. SCORING\n**TR → ContextFactor → FinalRisk**",
+        "height": 528,
+        "width": 560,
+        "color": 5
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        928,
+        128
+      ],
+      "id": "9894b05f-6d6b-48a6-8fe5-bd1b7897d789",
+      "name": "Sticky Note2"
+    },
+    {
+      "parameters": {
+        "content": "                                                                                                                                     \n## 4. RECOMENDACIÓN\n**IA Generativa + ATT&CK**",
+        "height": 528,
+        "width": 576
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        1552,
+        128
+      ],
+      "id": "d92ced0d-8893-4136-b4dc-02a0cde6c735",
+      "name": "Sticky Note3"
+    },
+    {
+      "parameters": {
+        "content": "                                                                                                                                     \n",
+        "height": 304,
+        "width": 1200,
+        "color": 6
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        928,
+        688
+      ],
+      "id": "1921543a-e442-4695-91dd-345fab836117",
+      "name": "Sticky Note4"
+    },
+    {
+      "parameters": {
+        "content": "                                                                                                                                     \n  ## 5. ALMACENAMIENTO \n**Elasticsearch**",
+        "height": 96,
+        "width": 304,
+        "color": 6
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        1376,
+        704
+      ],
+      "id": "ee506c3a-1990-498b-8abd-553963b10e4e",
+      "name": "Sticky Note5"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "03 - Merge Asset + NVD Response": {
+      "main": [
+        [
+          {
+            "node": "04 - Asset-CVE Master Table",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "04 - Asset-CVE Master Table": {
+      "main": [
+        [
+          {
+            "node": "05 Query EPSS by CVE",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "01b-Flatten hits": {
+      "main": [
+        [
+          {
+            "node": "01c-Normalize assets",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "01c-Normalize assets": {
+      "main": [
+        [
+          {
+            "node": "03 - Merge Asset + NVD Response",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "02 - Query NVD by CPE",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "07 - Calculate Technical Risk -CVE": {
+      "main": [
+        [
+          {
+            "node": "08 -Final Risk Score- Asset",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "07b - Index Asset-CVE Risk in Elasticsearch",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "08 -Final Risk Score- Asset": {
+      "main": [
+        [
+          {
+            "node": "Basic LLM Chain",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "When Executed by Another Workflow": {
+      "main": [
+        [
+          {
+            "node": "01a-Fetch inventory",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Anthropic Chat Model1": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Basic LLM Chain",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "05 Query EPSS by CVE": {
+      "main": [
+        [
+          {
+            "node": "06 Query KEV by CVE",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "06 Query KEV by CVE": {
+      "main": [
+        [
+          {
+            "node": "07 - Calculate Technical Risk -CVE",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Basic LLM Chain": {
+      "main": [
+        [
+          {
+            "node": "08b - Parse + Merge Remediation",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "08b - Parse + Merge Remediation": {
+      "main": [
+        [
+          {
+            "node": "08c - Index Asset Risk in Elasticsearch",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "01a-Fetch inventory": {
+      "main": [
+        [
+          {
+            "node": "01b-Flatten hits",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "02 - Query NVD by CPE": {
+      "main": [
+        [
+          {
+            "node": "03 - Merge Asset + NVD Response",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "availableInMCP": false
+  },
+  "versionId": "5504462d-02fb-4e79-ae21-a3da4f815680",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "55af0cced9718bf167a4a78ee093b1c0ab097bc889ab4c1637f24017903284cb"
+  },
+  "id": "7GCmLaTYn7ZpseFt",
+  "tags": []
+}

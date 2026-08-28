@@ -1,0 +1,27 @@
+{
+  "mappings": {
+    "properties": {
+      "cve_id": { "type": "keyword" },
+      "kev_flag": { "type": "boolean" },
+      "kev_score": { "type": "integer" },
+      "vendor_project": { "type": "keyword" },
+      "product": { "type": "keyword" },
+      "vulnerability_name": { "type": "text", "fields": { "keyword": { "type": "keyword", "ignore_above": 256 } } },
+      "short_description": { "type": "text" },
+      "date_added": { "type": "date" },
+      "due_date": { "type": "date" },
+      "known_ransomware": { "type": "keyword" },
+      "required_action": { "type": "text" },
+      "notes": { "type": "text" },
+      "cwes": { "type": "keyword" },
+      "catalog_title": { "type": "keyword" },
+      "catalog_version": { "type": "keyword" },
+      "catalog_date_released": { "type": "date" },
+      "catalog_count": { "type": "integer" },
+      "source": { "type": "keyword" },
+      "source_url": { "type": "keyword" },
+      "pipeline_stage": { "type": "keyword" },
+      "updated_at": { "type": "date" }
+    }
+  }
+}
