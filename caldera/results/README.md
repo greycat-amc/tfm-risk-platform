@@ -13,6 +13,16 @@ Con la versión vulnerable, la cadena de ataque se completa con éxito.
 | `output-ability2-traversal.jpg`| El path traversal devuelve el contenido de `/etc/passwd` (línea `root:`), confirmando la lectura no autorizada. |
 | `output-ability3-rce.jpg`      | La ejecución remota devuelve `uid=...` del comando `id`, confirmando el RCE. |
 
+
+![Operación con las tres abilities en SUCCESS](before/operacion-success.jpg)
+
+![Path traversal: contenido de /etc/passwd](before/output-ability2-traversal.jpg)
+
+![RCE: salida del comando id](before/output-ability3-rce.jpg)
+
+
+
+
 ## after/ — Apache 2.4.51 (mitigado)
 
 Tras actualizar a Apache 2.4.51, la misma cadena falla.
