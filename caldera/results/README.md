@@ -16,7 +16,7 @@ Con la versión vulnerable, la cadena de ataque se completa con éxito.
 
 
 <p align="center">
-  <img src="before/operation_exploit_success.png" alt="Operación con las tres abilities en SUCCESS" width="500">
+  <img src="before/operation_exploit_success.png" alt="Operación con las tres abilities en SUCCESS" width="900">
 </p>
 
 ![Operación con las tres abilities en SUCCESS](before/operation_exploit_success.png)
