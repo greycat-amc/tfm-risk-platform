@@ -25,7 +25,7 @@ Este trabajo propone un modelo que separa dos planos habitualmente fundidos en u
 única puntuación: el **riesgo técnico** de la vulnerabilidad (CVSS, EPSS, KEV) y el
 **contexto del activo**, formalizado en un factor independiente y explícito
 —el ContextFactor— con pesos declarados y cálculo trazable hasta los datos y
-criterios de parametrización. La priorización deja de recaer sobre la vulnerabilidad
+criterios de parametrización. La priorización deja de recaer únicamente sobre la vulnerabilidad
 para recaer sobre el activo que la contiene, y el contexto pasa de ser un ajuste
 implícito a una componente auditable del resultado.
 
