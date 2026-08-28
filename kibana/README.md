@@ -1,6 +1,6 @@
 # Dashboards de Kibana
 
-`dashboards-export.ndjson` contiene los objetos guardados de Kibana (versión
+`kibana-objects.ndjson` contiene los objetos guardados de Kibana (versión
 8.15.3) que componen la capa de visualización del sistema.
 
 ## Contenido
