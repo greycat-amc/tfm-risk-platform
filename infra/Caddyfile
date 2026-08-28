@@ -1,6 +1,0 @@
-n8n.local {
-    reverse_proxy n8n:5678
-}
-kibana.local {
-    reverse_proxy kibana:5601
-}
