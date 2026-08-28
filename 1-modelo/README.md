@@ -193,10 +193,21 @@ contexto pertenece al activo, no al CVE.
 
 - **workflow-override**: formulario (n8n Form Trigger) para declarar explícitamente
   la criticidad de un activo. Activa el factor H (`criticality_overridden = true`).
+  <p align="center">
+  <img src="img/override.png" alt="Workflow de override de criticidad" width="700">
+</p>
+
 - **workflow-epss-ingest**: descarga e indexa el dataset EPSS completo en
   `epss-scores` (requiere el módulo `zlib` en n8n).
+  <p align="center">
+  <img src="img/epss.png" alt="Workflow de ingesta del dataset EPSS" width="700">
+</p>
+
 - **workflow-kev-ingest**: descarga e indexa el catálogo KEV de CISA en
   `kev-catalog`.
+  <p align="center">
+  <img src="img/kev.png" alt="Workflow de ingesta del catálogo KEV de CISA" width="700">
+</p>
 
 ### 3.5. Nota sobre credenciales
 
