@@ -1,0 +1,8 @@
+name: Apache 2.4.49 CVE-2021-41773 Validation
+description: "Perfil que reproduce la explotación de CVE-2021-41773 sobre WEB-01: comprobación del servicio, path traversal y ejecución remota de código"
+atomic_ordering:
+- 89f75433-b321-4bb4-8186-600fd0d8f8ba
+- a5d9036f-e21e-4789-94d3-3f4d65e085dd
+- ce09e614-cb13-4005-8975-2d91f84cf24a
+adversary_id: ddd47897-a7bd-41db-8612-b82ee3a1f5c0
+objective: 495a9828-cab1-44dd-a0ca-66e58177d8cc
