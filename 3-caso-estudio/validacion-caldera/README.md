@@ -39,7 +39,7 @@ La validación se ejecuta en dos fases sobre la misma cadena:
 Se actualiza a 2.4.51 y no a 2.4.50, ya que esta última introduce
 CVE-2021-42013, una omisión incompleta de la corrección anterior.
 
-El detalle de cada captura y qué demuestra está en [`results/README.md`](results/README.md).
+El detalle de cada captura y qué demuestra está en [`results/README_V.md`](results/README.md).
 
 ## Reproducción
 
