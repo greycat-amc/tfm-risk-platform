@@ -42,6 +42,12 @@ Tras actualizar a Apache 2.4.51, la misma cadena falla.
 |-------------------------|----------------------------------------------------------------------------|
 | `operacion-failed.jpg`  | La operación finaliza con las abilities en estado FAILED: el path traversal y el RCE quedan bloqueados. La mitigación es efectiva. |
 
+Tras actualizar Apache a la versión 2.4.51, se repite la misma operación sobre WEB-01. La salida registrada muestra las tres abilities en estado FAILED: tanto el path traversal como la ejecución remota quedan bloqueados, lo que confirma que la mitigación cierra la vulnerabilidad.
+
+<p align="center">
+  <img src="after/operacion-failed.png" alt="Operación con las abilities en FAILED" width="700">
+</p>
+
 ## Interpretación
 
 El contraste before/after valida empíricamente que la vulnerabilidad es
