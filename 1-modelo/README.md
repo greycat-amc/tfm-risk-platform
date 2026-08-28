@@ -154,8 +154,14 @@ BlastRadius_norm = ( Σ módulos de alcance directo × 1.0
 
 donde N es el número de módulos del escenario (N = 9). El alcance directo pesa el
 doble que el alcance a un salto. En la versión actual, la matriz de alcance se
-declara manualmente (`blast_radius_status: manual_estimated`); su derivación
-automática mediante grafos de ataque se plantea como trabajo futuro.
+declara manualmente (`blast_radius_status: manual_estimated`); 
+
+<p align="center">
+  <img src="img/matriz-blast-radius.png" alt="Matriz de alcance para el cálculo del blast radius" width="700"><br>
+  <em>Matriz de alcance declarada: para cada módulo, se indican los módulos de alcance directo (peso 1.0) y de alcance a un salto (peso 0.5) sobre los que puede propagarse un compromiso.</em>
+</p>
+
+Su derivación automática mediante grafos de ataque se plantea como trabajo futuro.
 
 **Factor H (override de criticidad).** `H` es un factor binario que controla la
 ponderación entre criticidad y sensibilidad del módulo:
