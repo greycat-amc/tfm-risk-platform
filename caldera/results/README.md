@@ -14,11 +14,11 @@ Con la versión vulnerable, la cadena de ataque se completa con éxito.
 | `output-ability3-rce.jpg`      | La ejecución remota devuelve `uid=...` del comando `id`, confirmando el RCE. |
 
 
-![Operación con las tres abilities en SUCCESS](before/operacion-success.jpg)
+![Operación con las tres abilities en SUCCESS](before/operation_exploit_success.png)
 
-![Path traversal: contenido de /etc/passwd](before/output-ability2-traversal.jpg)
+![Path traversal: contenido de /etc/passwd](before/operation_exploit_success.png)
 
-![RCE: salida del comando id](before/output-ability3-rce.jpg)
+![RCE: salida del comando id](before/operation_exploit_success.png)
 
 
 
