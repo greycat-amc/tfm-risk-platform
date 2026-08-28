@@ -44,7 +44,7 @@ los campos calculados por el pipeline.
 | M365-01 | Correo e identidad cloud (M365) | Microsoft Exchange Online cloud | Internet | B09 | — |
 | MAIL-01 | Exchange on-premise | Microsoft Exchange Server 2016 CU20 | Internet | B02.2 | — |
 | PAY-01 | Pasarela de pagos | Node.js 14.17.0 | Interna | B02.2 | — |
-| PLC-01 | PLC cintas transportadoras almacen (Siemens S7-1200) | Siemens SIMATIC S7-1200 CPU Firmware 4.5.0 | Interna restringida | B11 | — |
+| PLC-01 | PLC cintas transportadoras almacen (Siemens S7-1200) | Siemens SIMATIC S7-1200 CPU Firmware 4.5.0 | Interna restringida | B11 |  Sí (→ high) |
 | PROXY-01 | Reverse proxy | nginx 1.18.0 | Internet | B01 | — |
 | SDN-01 | Meraki Dashboard (plano de control) | Cisco Meraki Dashboard cloud | Internet | B06.1 | — |
 | SW-01 | Conmutador de nucleo (CPD) | Cisco Meraki MS | Interna | B05 | — |
@@ -52,8 +52,8 @@ los campos calculados por el pipeline.
 | WKS-01 | Puesto de trabajo HQ | Microsoft Windows 10 22H2 | Interna | B12.1 | — |
 | WKS-02 | Puesto de trabajo Sucursal | Microsoft Windows 10 22H2 | Interna | B12.1 | — |
 
-El activo **CAM-01** es el único con criticidad declarada por *override*: un
-responsable redujo su criticidad de medio a bajo, activando el factor H del modelo
+Los activos **CAM-01** y **PLC-01** son los únicos con criticidad declarada por *override*: un
+responsable modificó su criticidad, activando el factor H del modelo
 (véase [`../../1-modelo/`](../../1-modelo/)). El resto conserva la criticidad
 derivada de su módulo.
 
